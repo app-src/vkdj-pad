@@ -7,9 +7,34 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <button id="toggleSidebarBtn">⚙️ Settings</button>
+
+    <div id="sidebar" class="sidebar hidden">
+      <h2>Settings</h2>
+
+      <div class="setting-group">
+        <h3>Serial Connection</h3>
+        <select id="portSelect">
+          <option value="">Select a port...</option>
+        </select>
+        <button id="connectSerialBtn">Connect Selected</button>
+        <button id="requestPortBtn">Add New Port</button>
+        <p id="connectionStatus" class="status-text">Not Connected</p>
+      </div>
+
+      <div class="setting-group">
+        <h3>Instructions</h3>
+        <p>
+          Drag and drop audio files (.mp3, .wav) onto any pad to set a custom
+          sound. The default synthesized sound will play if no custom audio is
+          set.
+        </p>
+      </div>
+      <button id="closeSidebarBtn">Close</button>
+    </div>
+
     <div class="container">
       <h1>Music Pad</h1>
-      <button id="connectSerialBtn">Connect Serial Device</button>
       <div class="pad-grid" id="padGrid">
         <!-- Pads will be generated here -->
       </div>

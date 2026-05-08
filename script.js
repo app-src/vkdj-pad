@@ -1,82 +1,230 @@
 const padKeys = ["a", "s", "d", "f", "g", "h", "j", "k", "l", "c", "v", "b"];
 const padGrid = document.getElementById("padGrid");
 
+// UI Elements
+const toggleSidebarBtn = document.getElementById("toggleSidebarBtn");
+const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+const sidebar = document.getElementById("sidebar");
+const portSelect = document.getElementById("portSelect");
+const connectSerialBtn = document.getElementById("connectSerialBtn");
+const requestPortBtn = document.getElementById("requestPortBtn");
+const connectionStatus = document.getElementById("connectionStatus");
+
+// Toggle Sidebar
+toggleSidebarBtn.addEventListener("click", () =>
+  sidebar.classList.remove("hidden"),
+);
+closeSidebarBtn.addEventListener("click", () =>
+  sidebar.classList.add("hidden"),
+);
+
 // Create pads
 padKeys.forEach((key) => {
   const pad = document.createElement("div");
   pad.classList.add("pad");
   pad.id = `pad-${key}`;
-  pad.textContent = key;
+  pad.innerHTML = `
+        <span class="key-label">${key}</span>
+        <span class="custom-indicator">🎵</span>
+    `;
   padGrid.appendChild(pad);
 });
 
-// Audio Context and Synthesizer
+// --- Audio Context and Synthesizer ---
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-// Frequencies for the 12 notes (C4 to B4)
 const frequencies = {
-  a: 261.63, // C4
-  s: 277.18, // C#4/Db4
-  d: 293.66, // D4
-  f: 311.13, // D#4/Eb4
-  g: 329.63, // E4
-  h: 349.23, // F4
-  j: 369.99, // F#4/Gb4
-  k: 392.0, // G4
-  l: 415.3, // G#4/Ab4
-  c: 440.0, // A4
-  v: 466.16, // A#4/Bb4
-  b: 493.88, // B4
+  a: 261.63,
+  s: 277.18,
+  d: 293.66,
+  f: 311.13,
+  g: 329.63,
+  h: 349.23,
+  j: 369.99,
+  k: 392.0,
+  l: 415.3,
+  c: 440.0,
+  v: 466.16,
+  b: 493.88,
 };
 
-const activeOscillators = {};
+const activeNodes = {}; // Stores both oscillators and audio buffers
+let customAudioBuffers = {}; // Stores decoded AudioBuffers mapping to keys
 
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new AudioContext();
   }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
 }
 
-function playSound(key) {
-  if (!frequencies[key]) return;
+// --- IndexedDB for Custom Audio ---
+const DB_NAME = "MusicPadDB";
+const STORE_NAME = "customAudio";
+let db;
+
+const initDB = new Promise((resolve, reject) => {
+  const request = indexedDB.open(DB_NAME, 1);
+  request.onupgradeneeded = (e) => {
+    db = e.target.result;
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME);
+    }
+  };
+  request.onsuccess = (e) => {
+    db = e.target.result;
+    loadCustomAudioFromDB().then(resolve);
+  };
+  request.onerror = (e) => reject(e.target.error);
+});
+
+async function saveCustomAudioToDB(key, arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(arrayBuffer, key);
+    request.onsuccess = () => resolve();
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function loadCustomAudioFromDB() {
   initAudio();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.openCursor();
 
-  if (activeOscillators[key]) return; // Already playing
+    request.onsuccess = async (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const key = cursor.key;
+        const arrayBuffer = cursor.value;
+        try {
+          // Copy buffer because decodeAudioData detaches it
+          const bufferCopy = arrayBuffer.slice(0);
+          const decodedBuffer = await audioCtx.decodeAudioData(bufferCopy);
+          customAudioBuffers[key] = decodedBuffer;
+          document.getElementById(`pad-${key}`).classList.add("has-custom");
+        } catch (err) {
+          console.error("Error decoding saved audio for", key, err);
+        }
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
 
-  const oscillator = audioCtx.createOscillator();
-  const gainNode = audioCtx.createGain();
+// --- Drag and Drop Logic ---
+padKeys.forEach((key) => {
+  const pad = document.getElementById(`pad-${key}`);
 
-  oscillator.type = "sine"; // sine, square, sawtooth, triangle
-  oscillator.frequency.setValueAtTime(frequencies[key], audioCtx.currentTime);
+  pad.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    pad.classList.add("dragover");
+  });
 
-  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-  gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05); // Attack
-  gainNode.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); // Decay
+  pad.addEventListener("dragleave", () => {
+    pad.classList.remove("dragover");
+  });
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+  pad.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    pad.classList.remove("dragover");
 
-  oscillator.start();
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("audio/")) {
+      initAudio();
+      const arrayBuffer = await file.arrayBuffer();
 
-  activeOscillators[key] = { oscillator, gainNode };
+      try {
+        // Save to DB
+        await saveCustomAudioToDB(key, arrayBuffer);
+
+        // Load to memory immediately
+        const bufferCopy = arrayBuffer.slice(0);
+        const decodedBuffer = await audioCtx.decodeAudioData(bufferCopy);
+        customAudioBuffers[key] = decodedBuffer;
+
+        pad.classList.add("has-custom");
+        console.log(`Custom audio set for pad ${key}`);
+      } catch (err) {
+        console.error("Error setting custom audio:", err);
+        alert("Failed to process audio file.");
+      }
+    }
+  });
+});
+
+// --- Audio Playback Logic ---
+function playSound(key) {
+  initAudio();
+  if (activeNodes[key]) return; // Already playing
+
+  if (customAudioBuffers[key]) {
+    // Play custom Audio Buffer
+    const source = audioCtx.createBufferSource();
+    source.buffer = customAudioBuffers[key];
+    source.connect(audioCtx.destination);
+    source.start();
+
+    // Stop currently playing source if any, then track it
+    activeNodes[key] = { type: "buffer", source: source };
+
+    // Clean up when done
+    source.onended = () => {
+      if (activeNodes[key] && activeNodes[key].source === source) {
+        delete activeNodes[key];
+      }
+    };
+  } else if (frequencies[key]) {
+    // Play fallback synthesized sound
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequencies[key], audioCtx.currentTime);
+
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05); // Attack
+    gainNode.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); // Decay
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start();
+    activeNodes[key] = { type: "oscillator", oscillator, gainNode };
+  }
 }
 
 function stopSound(key) {
-  if (!activeOscillators[key]) return;
+  if (!activeNodes[key]) return;
 
-  const { oscillator, gainNode } = activeOscillators[key];
+  if (activeNodes[key].type === "oscillator") {
+    const { oscillator, gainNode } = activeNodes[key];
+    gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+    gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.001,
+      audioCtx.currentTime + 0.1,
+    ); // Release
+    oscillator.stop(audioCtx.currentTime + 0.1);
+  } else if (activeNodes[key].type === "buffer") {
+    // Custom audio samples are usually left to play out entirely like a drum pad.
+    // If you want them to cut off on keyup, uncomment the next line:
+    // activeNodes[key].source.stop();
+  }
 
-  gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-  gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1); // Release
-
-  oscillator.stop(audioCtx.currentTime + 0.1);
-
-  delete activeOscillators[key];
+  delete activeNodes[key];
 }
 
-// Event Listeners for UI and Keyboard
+// --- Event Listeners for UI and Keyboard ---
 function activatePad(key) {
   const pad = document.getElementById(`pad-${key}`);
   if (pad && !pad.classList.contains("active")) {
@@ -107,7 +255,6 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-// Mouse/Touch events for the visual pads
 padKeys.forEach((key) => {
   const pad = document.getElementById(`pad-${key}`);
   pad.addEventListener("mousedown", () => activatePad(key));
@@ -124,52 +271,125 @@ padKeys.forEach((key) => {
   });
 });
 
-// Web Serial API Foundation
-const connectSerialBtn = document.getElementById("connectSerialBtn");
-let port;
+// --- Web Serial API Logic ---
+let activePort;
 let reader;
 let keepReading = true;
+let availablePorts = [];
 
-async function connectSerial() {
-  if ("serial" in navigator) {
-    try {
-      port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 9600 }); // Default baudRate, change as needed
-      connectSerialBtn.textContent = "Serial Connected";
-      connectSerialBtn.style.backgroundColor = "#555";
+// Common ESP32 Vendor IDs (Silicon Labs CP210x, CH340, etc.)
+// Note: In Web Serial, vendorId must be passed in hex format to requestPort but getPorts returns numeric.
+const ESP32_VIDS = [
+  0x10c4, // Silicon Labs (CP210x)
+  0x1a86, // QinHeng Electronics (CH340)
+  0x303a, // Espressif
+];
 
-      keepReading = true;
-      readSerialData();
-    } catch (error) {
-      console.error("Error connecting to serial port:", error);
-      alert("Failed to connect to serial port.");
+async function updatePortList() {
+  if (!("serial" in navigator)) {
+    connectionStatus.textContent = "Web Serial not supported";
+    return;
+  }
+
+  availablePorts = await navigator.serial.getPorts();
+  portSelect.innerHTML = '<option value="">Select a port...</option>';
+
+  availablePorts.forEach((port, index) => {
+    const info = port.getInfo();
+    const isEsp = ESP32_VIDS.includes(info.usbVendorId);
+    const name = `Port ${index + 1}` + (isEsp ? " (ESP32?)" : "");
+
+    const option = document.createElement("option");
+    option.value = index;
+    option.textContent = name;
+    portSelect.appendChild(option);
+  });
+}
+
+async function autoConnectEsp32() {
+  if (activePort) return;
+  for (const port of availablePorts) {
+    const info = port.getInfo();
+    if (ESP32_VIDS.includes(info.usbVendorId)) {
+      try {
+        await connectToPort(port);
+        return;
+      } catch (e) {
+        console.log("Auto-connect failed for port", port, e);
+      }
     }
-  } else {
-    alert("Web Serial API not supported in your browser.");
   }
 }
 
+async function connectToPort(port) {
+  if (activePort) {
+    await disconnectSerial();
+  }
+  try {
+    await port.open({ baudRate: 115200 }); // standard ESP32 rate, adjust if needed
+    activePort = port;
+    connectionStatus.textContent = "Connected";
+    connectionStatus.classList.add("connected");
+    connectSerialBtn.textContent = "Disconnect";
+    keepReading = true;
+    readSerialData();
+  } catch (error) {
+    console.error("Error connecting to serial port:", error);
+    connectionStatus.textContent = "Connection Failed";
+    connectionStatus.classList.remove("connected");
+  }
+}
+
+async function disconnectSerial() {
+  keepReading = false;
+  if (reader) {
+    await reader.cancel();
+  }
+  if (activePort) {
+    await activePort.close();
+  }
+  activePort = null;
+  connectionStatus.textContent = "Disconnected";
+  connectionStatus.classList.remove("connected");
+  connectSerialBtn.textContent = "Connect Selected";
+}
+
+connectSerialBtn.addEventListener("click", async () => {
+  if (activePort) {
+    await disconnectSerial();
+  } else {
+    const selectedIndex = portSelect.value;
+    if (selectedIndex !== "") {
+      await connectToPort(availablePorts[selectedIndex]);
+    }
+  }
+});
+
+requestPortBtn.addEventListener("click", async () => {
+  if (!("serial" in navigator)) return;
+  try {
+    const port = await navigator.serial.requestPort();
+    await updatePortList();
+    await connectToPort(port);
+    // Ensure dropdown selects the newly connected port (simplification: just select the last one)
+    portSelect.value = availablePorts.length - 1;
+  } catch (error) {
+    console.error("User cancelled port request or error occurred", error);
+  }
+});
+
 async function readSerialData() {
-  while (port.readable && keepReading) {
-    reader = port.readable.getReader();
+  while (activePort && activePort.readable && keepReading) {
+    reader = activePort.readable.getReader();
     try {
       while (true) {
         const { value, done } = await reader.read();
-        if (done) {
-          break; // Reader has been canceled.
-        }
+        if (done) break;
 
-        // Assuming data is sent as characters mapping to pads, e.g., 'a', 's'
-        // You might need to adjust parsing based on your Arduino code
         const decodedData = new TextDecoder().decode(value);
-
-        // Process each character
         for (let i = 0; i < decodedData.length; i++) {
           const char = decodedData[i].toLowerCase();
-          // Basic handling: toggle sound if character matches
-          // A more robust protocol (e.g., 'a_ON', 'a_OFF') is recommended for real usage
           if (padKeys.includes(char)) {
-            // Simple simulation: trigger down, then immediately schedule up to mimic hit
             activatePad(char);
             setTimeout(() => deactivatePad(char), 100);
           }
@@ -178,9 +398,18 @@ async function readSerialData() {
     } catch (error) {
       console.error("Error reading from serial:", error);
     } finally {
-      reader.releaseLock();
+      if (reader) {
+        reader.releaseLock();
+      }
     }
   }
 }
 
-connectSerialBtn.addEventListener("click", connectSerial);
+// Initialize Serial on load
+window.addEventListener("load", async () => {
+  await initDB;
+  if ("serial" in navigator) {
+    await updatePortList();
+    await autoConnectEsp32();
+  }
+});

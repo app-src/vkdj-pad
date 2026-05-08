@@ -7,36 +7,135 @@ body {
   align-items: center;
   height: 100vh;
   margin: 0;
+  overflow: hidden;
 }
 
+#toggleSidebarBtn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 100;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 300px;
+  background-color: #252525;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  box-sizing: border-box;
+  transition: transform 0.3s ease;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar.hidden {
+  transform: translateX(-100%);
+}
+
+.sidebar h2 {
+  color: #4caf50;
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.setting-group {
+  background: #333;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.setting-group h3 {
+  margin-top: 0;
+  font-size: 16px;
+  border-bottom: 1px solid #555;
+  padding-bottom: 5px;
+}
+
+.setting-group select,
+.setting-group button {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  background: #444;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.setting-group button {
+  background-color: #4caf50;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.setting-group button:hover {
+  background-color: #45a049;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #aaa;
+  margin: 5px 0 0 0;
+}
+
+.status-text.connected {
+  color: #4caf50;
+}
+
+#closeSidebarBtn {
+  margin-top: auto;
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#closeSidebarBtn:hover {
+  background-color: #b71c1c;
+}
+
+/* Main Container Styles */
 .container {
   text-align: center;
   background: #2d2d2d;
-  padding: 30px;
+  padding: 40px;
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease;
+}
+
+/* Optional: push the main container when sidebar is open */
+body:has(.sidebar:not(.hidden)) .container {
+  transform: translateX(150px);
+}
+
+body:has(.sidebar:not(.hidden)) #toggleSidebarBtn {
+  display: none;
 }
 
 h1 {
   margin-top: 0;
   color: #4caf50;
   letter-spacing: 2px;
-}
-
-#connectSerialBtn {
-  background-color: #4caf50;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  font-size: 16px;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-bottom: 20px;
-  transition: background-color 0.3s;
-}
-
-#connectSerialBtn:hover {
-  background-color: #45a049;
+  margin-bottom: 30px;
 }
 
 .pad-grid {
@@ -46,29 +145,54 @@ h1 {
 }
 
 .pad {
-  width: 80px;
-  height: 80px;
+  width: 90px;
+  height: 90px;
   background-color: #3d3d3d;
-  border: 2px solid #555;
+  border: 2px dashed transparent;
   border-radius: 10px;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  font-size: 24px;
-  font-weight: bold;
-  text-transform: uppercase;
   cursor: pointer;
   user-select: none;
   transition: all 0.1s ease;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.pad .key-label {
+  font-size: 28px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.pad .custom-indicator {
+  font-size: 10px;
+  color: #4caf50;
+  position: absolute;
+  bottom: 5px;
+  display: none;
+}
+
+.pad.has-custom .custom-indicator {
+  display: block;
+}
+
+.pad.dragover {
+  border-color: #4caf50;
+  background-color: #4a4a4a;
 }
 
 .pad.active {
   background-color: #4caf50;
-  border-color: #4caf50;
   transform: scale(0.95) translateY(4px);
   box-shadow:
     0 0px 0px rgba(0, 0, 0, 0.3),
     0 0 15px #4caf50;
+  color: #1e1e1e;
+}
+
+.pad.active .custom-indicator {
   color: #1e1e1e;
 }
