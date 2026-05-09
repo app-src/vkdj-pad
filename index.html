@@ -13,6 +13,7 @@
   <body>
     <button id="toggleSidebarBtn">⚙️ Settings</button>
 
+    <!-- Left Settings Sidebar -->
     <div id="sidebar" class="sidebar hidden">
       <h2>Settings</h2>
 
@@ -28,7 +29,7 @@
 
       <div class="setting-group">
         <h3>Audio Settings</h3>
-        <button id="resetAudioBtn">Reset to Default Sounds</button>
+        <button id="resetAudioBtn">Reset Custom Sounds</button>
       </div>
 
       <div class="setting-group">
@@ -38,24 +39,40 @@
 
       <div class="setting-group">
         <h3>Instructions</h3>
-        <p>Drag &amp; drop audio files (.mp3, .wav) onto any pad to set a custom sound.</p>
-        <p>Drag pads to rearrange freely — they snap to neighbours when close enough.</p>
+        <p>Drop audio files (.mp3, .wav) onto any pad to assign a custom sound.</p>
+        <p>Drag pads to rearrange — they snap to neighbours when close enough.</p>
+        <p>Use the Sound Mapping panel on the right to swap sounds between keys.</p>
       </div>
       <button id="closeSidebarBtn">Close</button>
     </div>
 
+    <!-- App shell -->
     <div class="app-shell">
       <header class="app-header">
         <h1>VKDJ Hex Pad</h1>
       </header>
-      <div id="hexCanvas" class="hex-canvas">
-        <!-- Snap ghost (shown while dragging near a snap point) -->
-        <div id="snapGhost" class="snap-ghost" aria-hidden="true">
-          <div class="snap-ghost-border"></div>
-          <div class="snap-ghost-fill"></div>
+
+      <div class="app-body">
+        <!-- Main hex canvas -->
+        <div id="hexCanvas" class="hex-canvas">
+          <div id="snapGhost" class="snap-ghost" aria-hidden="true">
+            <div class="snap-ghost-border"></div>
+            <div class="snap-ghost-fill"></div>
+          </div>
+          <svg id="snapSvg" class="snap-svg" aria-hidden="true"></svg>
         </div>
-        <!-- SVG for edge highlight lines -->
-        <svg id="snapSvg" class="snap-svg" aria-hidden="true"></svg>
+
+        <!-- Right audio mapping panel -->
+        <aside id="audioPanel" class="audio-panel">
+          <div class="audio-panel-header">
+            <h2>Sound Mapping</h2>
+            <p class="panel-hint" id="mapHint">Click a pad row to select, then click another to swap sounds.</p>
+          </div>
+          <div id="audioMapList" class="audio-map-list"></div>
+          <div class="audio-panel-footer">
+            <button id="resetMapBtn">↺ Reset Mapping</button>
+          </div>
+        </aside>
       </div>
     </div>
 
