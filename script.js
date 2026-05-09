@@ -43,22 +43,7 @@ padKeys.forEach((key) => {
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-const frequencies = {
-  a: 261.63,
-  s: 277.18,
-  d: 293.66,
-  f: 311.13,
-  g: 329.63,
-  h: 349.23,
-  j: 369.99,
-  k: 392.0,
-  l: 415.3,
-  c: 440.0,
-  v: 466.16,
-  b: 493.88,
-};
-
-const activeNodes = {}; // Stores both oscillators and audio buffers
+const activeNodes = {}; // Stores audio buffers
 let customAudioBuffers = {}; // Stores decoded AudioBuffers mapping to keys
 let defaultAudioBuffers = {}; // Stores fetched default audio
 
@@ -230,38 +215,16 @@ function playSound(key) {
         delete activeNodes[key];
       }
     };
-  } else if (frequencies[key]) {
-    // Play fallback synthesized sound
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequencies[key], audioCtx.currentTime);
-
-    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05); // Attack
-    gainNode.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); // Decay
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    oscillator.start();
-    activeNodes[key] = { type: "oscillator", oscillator, gainNode };
   }
 }
 
 function stopSound(key) {
   if (!activeNodes[key]) return;
 
-  if (activeNodes[key].type === "oscillator") {
-    const { oscillator, gainNode } = activeNodes[key];
-    gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-    gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(
-      0.001,
-      audioCtx.currentTime + 0.1,
-    ); // Release
-    oscillator.stop(audioCtx.currentTime + 0.1);
+  if (activeNodes[key].type === "buffer") {
+    // Custom audio samples are usually left to play out entirely like a drum pad.
+    // If you want them to cut off on keyup, uncomment the next line:
+    // activeNodes[key].source.stop();
   }
 
   delete activeNodes[key];
