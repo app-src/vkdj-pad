@@ -43,9 +43,9 @@ padKeys.forEach((key) => {
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-const activeNodes = {}; // Stores audio buffers
+const activeNodes = {}; // Stores active AudioContext buffer sources
 let customAudioBuffers = {}; // Stores decoded AudioBuffers mapping to keys
-let defaultAudioBuffers = {}; // Stores fetched default audio
+let defaultAudioElements = {}; // Stores standard HTML5 Audio elements
 
 const defaultAudioURLs = {
   a: "https://www.musicca.com/lydfiler/trommesat/standard/kick.mp3",
@@ -72,16 +72,12 @@ function initAudio() {
 }
 
 async function loadDefaultAudio() {
-  initAudio();
   for (const key of Object.keys(defaultAudioURLs)) {
-    try {
-      const response = await fetch(defaultAudioURLs[key]);
-      const arrayBuffer = await response.arrayBuffer();
-      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      defaultAudioBuffers[key] = decodedBuffer;
-    } catch (error) {
-      console.error(`Failed to load default audio for ${key}:`, error);
-    }
+    const audio = new Audio(defaultAudioURLs[key]);
+    audio.crossOrigin = "anonymous";
+    // Preload but don't play
+    audio.preload = "auto";
+    defaultAudioElements[key] = audio;
   }
 }
 
@@ -195,39 +191,37 @@ padKeys.forEach((key) => {
 // --- Audio Playback Logic ---
 function playSound(key) {
   initAudio();
-  if (activeNodes[key]) return; // Already playing
 
-  const bufferToPlay = customAudioBuffers[key] || defaultAudioBuffers[key];
-
-  if (bufferToPlay) {
-    // Play Audio Buffer (custom or default)
+  // If user dropped a custom file, play via Web Audio API
+  if (customAudioBuffers[key]) {
+    if (activeNodes[key]) return; // don't overlap endlessly
     const source = audioCtx.createBufferSource();
-    source.buffer = bufferToPlay;
+    source.buffer = customAudioBuffers[key];
     source.connect(audioCtx.destination);
     source.start();
 
-    // Track it
     activeNodes[key] = { type: "buffer", source: source };
 
-    // Clean up when done
     source.onended = () => {
       if (activeNodes[key] && activeNodes[key].source === source) {
         delete activeNodes[key];
       }
     };
   }
+  // Otherwise play default HTML5 audio element
+  else if (defaultAudioElements[key]) {
+    const audioEl = defaultAudioElements[key];
+    // Reset to start to allow rapid re-triggering
+    audioEl.currentTime = 0;
+    audioEl.play().catch((e) => console.log("Audio play failed:", e));
+  }
 }
 
 function stopSound(key) {
-  if (!activeNodes[key]) return;
-
-  if (activeNodes[key].type === "buffer") {
-    // Custom audio samples are usually left to play out entirely like a drum pad.
-    // If you want them to cut off on keyup, uncomment the next line:
-    // activeNodes[key].source.stop();
+  // We generally let drum sounds play out, but clear tracking
+  if (activeNodes[key]) {
+    delete activeNodes[key];
   }
-
-  delete activeNodes[key];
 }
 
 // --- Event Listeners for UI and Keyboard ---
