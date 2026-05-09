@@ -20,6 +20,22 @@ closeSidebarBtn.addEventListener("click", () =>
   sidebar.classList.add("hidden"),
 );
 
+// Drum name labels for each key
+const padNames = {
+  a: "Bass Drum",
+  s: "Snare",
+  d: "Cross Stick",
+  f: "Hi Tom",
+  g: "Low Tom",
+  h: "Floor Tom",
+  j: "Hi-Hat ✕",
+  k: "Hi-Hat ○",
+  l: "Hi-Hat Foot",
+  c: "Ride",
+  v: "Crash",
+  b: "—",
+};
+
 // Create pads
 const topRowKeys = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
 const bottomRowKeys = ["c", "v", "b"];
@@ -29,7 +45,8 @@ padKeys.forEach((key) => {
   pad.classList.add("pad");
   pad.id = `pad-${key}`;
   pad.innerHTML = `
-        <span class="key-label">${key}</span>
+        <span class="key-label">${key.toUpperCase()}</span>
+        <span class="pad-name">${padNames[key] || ""}</span>
         <span class="custom-indicator">🎵</span>
     `;
   if (topRowKeys.includes(key)) {
@@ -47,19 +64,20 @@ const activeNodes = {}; // Stores active AudioContext buffer sources
 let customAudioBuffers = {}; // Stores decoded AudioBuffers mapping to keys
 let defaultAudioElements = {}; // Stores standard HTML5 Audio elements
 
+const BASE = "https://www.musicca.com/files/audio/tools/drums/standard/";
 const defaultAudioURLs = {
-  a: "https://www.musicca.com/lydfiler/trommesat/standard/kick.mp3",
-  s: "https://www.musicca.com/lydfiler/trommesat/standard/snare.mp3",
-  d: "https://www.musicca.com/lydfiler/trommesat/standard/sidestick.mp3",
-  f: "https://www.musicca.com/lydfiler/trommesat/standard/tom1.mp3",
-  g: "https://www.musicca.com/lydfiler/trommesat/standard/tom2.mp3",
-  h: "https://www.musicca.com/lydfiler/trommesat/standard/tom3.mp3",
-  j: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-closed.mp3",
-  k: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-open.mp3",
-  l: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-foot.mp3",
-  c: "https://www.musicca.com/lydfiler/trommesat/standard/ride.mp3",
-  v: "https://www.musicca.com/lydfiler/trommesat/standard/crash.mp3",
-  // 'b' is left out as there are only 11 URLs provided for 12 keys
+  a: BASE + "bass.mp3",          // Bass Drum
+  s: BASE + "snare-drum.mp3",    // Snare Drum
+  d: BASE + "snare-stick.mp3",   // Snare (Cross Stick)
+  f: BASE + "tom1.mp3",          // High Tom
+  g: BASE + "tom2.mp3",          // Low Tom
+  h: BASE + "floor-tom.mp3",     // Floor Tom
+  j: BASE + "hihat.mp3",         // Hi-hat (Closed)
+  k: BASE + "hihat-open.mp3",    // Hi-hat (Open)
+  l: BASE + "hihat-foot.mp3",    // Hi-hat (Foot)
+  c: BASE + "ride.mp3",          // Ride Cymbal
+  v: BASE + "crash.mp3",         // Crash Cymbal
+  // key 'b' intentionally left unmapped
 };
 
 function initAudio() {
@@ -74,8 +92,10 @@ function initAudio() {
 async function loadDefaultAudio() {
   for (const key of Object.keys(defaultAudioURLs)) {
     const audio = new Audio(defaultAudioURLs[key]);
-    audio.crossOrigin = "anonymous";
-    // Preload but don't play
+    // NOTE: Do NOT set crossOrigin = "anonymous" here.
+    // musicca.com does not return CORS headers, so setting crossOrigin
+    // causes the browser to block the request entirely. Without it,
+    // the browser fetches and plays cross-origin audio normally.
     audio.preload = "auto";
     defaultAudioElements[key] = audio;
   }
@@ -210,10 +230,9 @@ function playSound(key) {
   }
   // Otherwise play default HTML5 audio element
   else if (defaultAudioElements[key]) {
-    const audioEl = defaultAudioElements[key];
-    // Reset to start to allow rapid re-triggering
-    audioEl.currentTime = 0;
-    audioEl.play().catch((e) => console.log("Audio play failed:", e));
+    // Clone the element to allow rapid re-triggering without seeking glitches
+    const audioEl = defaultAudioElements[key].cloneNode();
+    audioEl.play().catch((e) => console.warn("Default audio play failed:", e));
   }
 }
 
