@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>12 Alphabet Music Pad</title>
+    <title>VKDJ Hex Pad</title>
+    <meta name="description" content="A hexagonal drum pad controller with free-form drag and snap arrangement, keyboard triggers, and custom audio support." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -28,23 +32,33 @@
       </div>
 
       <div class="setting-group">
+        <h3>Layout</h3>
+        <button id="resetLayoutBtn">Reset Pad Layout</button>
+      </div>
+
+      <div class="setting-group">
         <h3>Instructions</h3>
-        <p>
-          Drag and drop audio files (.mp3, .wav) onto any pad to set a custom
-          sound. The default synthesized sound will play if no custom audio is
-          set.
-        </p>
+        <p>Drag &amp; drop audio files (.mp3, .wav) onto any pad to set a custom sound.</p>
+        <p>Drag pads to rearrange freely — they snap to neighbours when close enough.</p>
       </div>
       <button id="closeSidebarBtn">Close</button>
     </div>
 
-    <div class="container">
-      <h1>Music Pad</h1>
-      <div class="pad-layout" id="padGrid">
-        <div class="pad-row pad-row-top" id="padRowTop"></div>
-        <div class="pad-row pad-row-bottom" id="padRowBottom"></div>
+    <div class="app-shell">
+      <header class="app-header">
+        <h1>VKDJ Hex Pad</h1>
+      </header>
+      <div id="hexCanvas" class="hex-canvas">
+        <!-- Snap ghost (shown while dragging near a snap point) -->
+        <div id="snapGhost" class="snap-ghost" aria-hidden="true">
+          <div class="snap-ghost-border"></div>
+          <div class="snap-ghost-fill"></div>
+        </div>
+        <!-- SVG for edge highlight lines -->
+        <svg id="snapSvg" class="snap-svg" aria-hidden="true"></svg>
       </div>
     </div>
+
     <script src="script.js"></script>
   </body>
 </html>
