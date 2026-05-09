@@ -23,6 +23,11 @@
       </div>
 
       <div class="setting-group">
+        <h3>Audio Settings</h3>
+        <button id="resetAudioBtn">Reset to Default Sounds</button>
+      </div>
+
+      <div class="setting-group">
         <h3>Instructions</h3>
         <p>
           Drag and drop audio files (.mp3, .wav) onto any pad to set a custom
@@ -35,8 +40,9 @@
 
     <div class="container">
       <h1>Music Pad</h1>
-      <div class="pad-grid" id="padGrid">
-        <!-- Pads will be generated here -->
+      <div class="pad-layout" id="padGrid">
+        <div class="pad-row pad-row-top" id="padRowTop"></div>
+        <div class="pad-row pad-row-bottom" id="padRowBottom"></div>
       </div>
     </div>
     <script src="script.js"></script>

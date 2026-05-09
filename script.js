@@ -1,5 +1,6 @@
 const padKeys = ["a", "s", "d", "f", "g", "h", "j", "k", "l", "c", "v", "b"];
-const padGrid = document.getElementById("padGrid");
+const padRowTop = document.getElementById("padRowTop");
+const padRowBottom = document.getElementById("padRowBottom");
 
 // UI Elements
 const toggleSidebarBtn = document.getElementById("toggleSidebarBtn");
@@ -9,6 +10,7 @@ const portSelect = document.getElementById("portSelect");
 const connectSerialBtn = document.getElementById("connectSerialBtn");
 const requestPortBtn = document.getElementById("requestPortBtn");
 const connectionStatus = document.getElementById("connectionStatus");
+const resetAudioBtn = document.getElementById("resetAudioBtn");
 
 // Toggle Sidebar
 toggleSidebarBtn.addEventListener("click", () =>
@@ -19,6 +21,9 @@ closeSidebarBtn.addEventListener("click", () =>
 );
 
 // Create pads
+const topRowKeys = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+const bottomRowKeys = ["c", "v", "b"];
+
 padKeys.forEach((key) => {
   const pad = document.createElement("div");
   pad.classList.add("pad");
@@ -27,30 +32,35 @@ padKeys.forEach((key) => {
         <span class="key-label">${key}</span>
         <span class="custom-indicator">🎵</span>
     `;
-  padGrid.appendChild(pad);
+  if (topRowKeys.includes(key)) {
+    padRowTop.appendChild(pad);
+  } else if (bottomRowKeys.includes(key)) {
+    padRowBottom.appendChild(pad);
+  }
 });
 
 // --- Audio Context and Synthesizer ---
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-const frequencies = {
-  a: 261.63,
-  s: 277.18,
-  d: 293.66,
-  f: 311.13,
-  g: 329.63,
-  h: 349.23,
-  j: 369.99,
-  k: 392.0,
-  l: 415.3,
-  c: 440.0,
-  v: 466.16,
-  b: 493.88,
-};
-
-const activeNodes = {}; // Stores both oscillators and audio buffers
+const activeNodes = {}; // Stores active AudioContext buffer sources
 let customAudioBuffers = {}; // Stores decoded AudioBuffers mapping to keys
+let defaultAudioElements = {}; // Stores standard HTML5 Audio elements
+
+const defaultAudioURLs = {
+  a: "https://www.musicca.com/lydfiler/trommesat/standard/kick.mp3",
+  s: "https://www.musicca.com/lydfiler/trommesat/standard/snare.mp3",
+  d: "https://www.musicca.com/lydfiler/trommesat/standard/sidestick.mp3",
+  f: "https://www.musicca.com/lydfiler/trommesat/standard/tom1.mp3",
+  g: "https://www.musicca.com/lydfiler/trommesat/standard/tom2.mp3",
+  h: "https://www.musicca.com/lydfiler/trommesat/standard/tom3.mp3",
+  j: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-closed.mp3",
+  k: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-open.mp3",
+  l: "https://www.musicca.com/lydfiler/trommesat/standard/hihat-foot.mp3",
+  c: "https://www.musicca.com/lydfiler/trommesat/standard/ride.mp3",
+  v: "https://www.musicca.com/lydfiler/trommesat/standard/crash.mp3",
+  // 'b' is left out as there are only 11 URLs provided for 12 keys
+};
 
 function initAudio() {
   if (!audioCtx) {
@@ -58,6 +68,16 @@ function initAudio() {
   }
   if (audioCtx.state === "suspended") {
     audioCtx.resume();
+  }
+}
+
+async function loadDefaultAudio() {
+  for (const key of Object.keys(defaultAudioURLs)) {
+    const audio = new Audio(defaultAudioURLs[key]);
+    audio.crossOrigin = "anonymous";
+    // Preload but don't play
+    audio.preload = "auto";
+    defaultAudioElements[key] = audio;
   }
 }
 
@@ -97,26 +117,32 @@ async function loadCustomAudioFromDB() {
     const transaction = db.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.openCursor();
+    const items = [];
 
-    request.onsuccess = async (e) => {
+    request.onsuccess = (e) => {
       const cursor = e.target.result;
       if (cursor) {
-        const key = cursor.key;
-        const arrayBuffer = cursor.value;
-        try {
-          // Copy buffer because decodeAudioData detaches it
-          const bufferCopy = arrayBuffer.slice(0);
-          const decodedBuffer = await audioCtx.decodeAudioData(bufferCopy);
-          customAudioBuffers[key] = decodedBuffer;
-          document.getElementById(`pad-${key}`).classList.add("has-custom");
-        } catch (err) {
-          console.error("Error decoding saved audio for", key, err);
-        }
+        items.push({ key: cursor.key, buffer: cursor.value });
         cursor.continue();
-      } else {
-        resolve();
       }
     };
+
+    transaction.oncomplete = async () => {
+      for (const item of items) {
+        try {
+          const bufferCopy = item.buffer.slice(0);
+          const decodedBuffer = await audioCtx.decodeAudioData(bufferCopy);
+          customAudioBuffers[item.key] = decodedBuffer;
+          document
+            .getElementById(`pad-${item.key}`)
+            .classList.add("has-custom");
+        } catch (err) {
+          console.error("Error decoding saved audio for", item.key, err);
+        }
+      }
+      resolve();
+    };
+
     request.onerror = (e) => reject(e.target.error);
   });
 }
@@ -165,63 +191,37 @@ padKeys.forEach((key) => {
 // --- Audio Playback Logic ---
 function playSound(key) {
   initAudio();
-  if (activeNodes[key]) return; // Already playing
 
+  // If user dropped a custom file, play via Web Audio API
   if (customAudioBuffers[key]) {
-    // Play custom Audio Buffer
+    if (activeNodes[key]) return; // don't overlap endlessly
     const source = audioCtx.createBufferSource();
     source.buffer = customAudioBuffers[key];
     source.connect(audioCtx.destination);
     source.start();
 
-    // Stop currently playing source if any, then track it
     activeNodes[key] = { type: "buffer", source: source };
 
-    // Clean up when done
     source.onended = () => {
       if (activeNodes[key] && activeNodes[key].source === source) {
         delete activeNodes[key];
       }
     };
-  } else if (frequencies[key]) {
-    // Play fallback synthesized sound
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequencies[key], audioCtx.currentTime);
-
-    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05); // Attack
-    gainNode.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); // Decay
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    oscillator.start();
-    activeNodes[key] = { type: "oscillator", oscillator, gainNode };
+  }
+  // Otherwise play default HTML5 audio element
+  else if (defaultAudioElements[key]) {
+    const audioEl = defaultAudioElements[key];
+    // Reset to start to allow rapid re-triggering
+    audioEl.currentTime = 0;
+    audioEl.play().catch((e) => console.log("Audio play failed:", e));
   }
 }
 
 function stopSound(key) {
-  if (!activeNodes[key]) return;
-
-  if (activeNodes[key].type === "oscillator") {
-    const { oscillator, gainNode } = activeNodes[key];
-    gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-    gainNode.gain.setValueAtTime(gainNode.gain.value, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(
-      0.001,
-      audioCtx.currentTime + 0.1,
-    ); // Release
-    oscillator.stop(audioCtx.currentTime + 0.1);
-  } else if (activeNodes[key].type === "buffer") {
-    // Custom audio samples are usually left to play out entirely like a drum pad.
-    // If you want them to cut off on keyup, uncomment the next line:
-    // activeNodes[key].source.stop();
+  // We generally let drum sounds play out, but clear tracking
+  if (activeNodes[key]) {
+    delete activeNodes[key];
   }
-
-  delete activeNodes[key];
 }
 
 // --- Event Listeners for UI and Keyboard ---
@@ -276,6 +276,7 @@ let activePort;
 let reader;
 let keepReading = true;
 let availablePorts = [];
+let serialBuffer = "";
 
 // Common ESP32 Vendor IDs (Silicon Labs CP210x, CH340, etc.)
 // Note: In Web Serial, vendorId must be passed in hex format to requestPort but getPorts returns numeric.
@@ -387,11 +388,45 @@ async function readSerialData() {
         if (done) break;
 
         const decodedData = new TextDecoder().decode(value);
-        for (let i = 0; i < decodedData.length; i++) {
-          const char = decodedData[i].toLowerCase();
-          if (padKeys.includes(char)) {
-            activatePad(char);
-            setTimeout(() => deactivatePad(char), 100);
+        serialBuffer += decodedData;
+
+        // Process buffer for markers #[key][direction]$
+        // e.g., #ad$ (a down), #au$ (a up)
+        let startIndex;
+        while ((startIndex = serialBuffer.indexOf("#")) !== -1) {
+          const endIndex = serialBuffer.indexOf("$", startIndex);
+          if (endIndex !== -1) {
+            // We have a complete command
+            const command = serialBuffer
+              .substring(startIndex + 1, endIndex)
+              .toLowerCase();
+            if (command.length === 2) {
+              const key = command[0];
+              const direction = command[1];
+
+              if (padKeys.includes(key)) {
+                if (direction === "d") {
+                  activatePad(key);
+                } else if (direction === "u") {
+                  deactivatePad(key);
+                }
+              }
+            }
+            // Remove processed command from buffer
+            serialBuffer = serialBuffer.substring(endIndex + 1);
+          } else {
+            // Incomplete command, wait for more data
+            break;
+          }
+        }
+
+        // Prevent buffer from growing infinitely if garbage data is received
+        if (serialBuffer.length > 100) {
+          const lastHash = serialBuffer.lastIndexOf("#");
+          if (lastHash !== -1) {
+            serialBuffer = serialBuffer.substring(lastHash);
+          } else {
+            serialBuffer = "";
           }
         }
       }
@@ -405,11 +440,52 @@ async function readSerialData() {
   }
 }
 
-// Initialize Serial on load
+// Initialize on load
 window.addEventListener("load", async () => {
-  await initDB;
+  await loadDefaultAudio(); // Load defaults first
+  await initDB; // Then load customs which override defaults
   if ("serial" in navigator) {
     await updatePortList();
     await autoConnectEsp32();
   }
 });
+
+// --- Reset Audio Feature ---
+if (resetAudioBtn) {
+  resetAudioBtn.addEventListener("click", async () => {
+    if (
+      !confirm(
+        "Are you sure you want to reset all custom sounds? This will restore the default drum kit.",
+      )
+    ) {
+      return;
+    }
+
+    // Clear IndexedDB
+    if (db) {
+      const transaction = db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.clear();
+
+      request.onsuccess = () => {
+        // Clear in-memory buffers
+        customAudioBuffers = {};
+
+        // Remove visual indicators
+        padKeys.forEach((key) => {
+          const pad = document.getElementById(`pad-${key}`);
+          if (pad) {
+            pad.classList.remove("has-custom");
+          }
+        });
+
+        alert("Audio settings reset to defaults.");
+      };
+
+      request.onerror = (e) => {
+        console.error("Error clearing IndexedDB:", e);
+        alert("Failed to reset audio settings.");
+      };
+    }
+  });
+}
